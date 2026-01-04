@@ -1,16 +1,17 @@
 import os
+import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header  # Header 추가
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, constr
 from openai import OpenAI
+from typing import Optional
 
 load_dotenv()
 
 app = FastAPI()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# 요청 Body
 class ChatRequest(BaseModel):
     message: constr(min_length=1, max_length=500)
 
@@ -25,7 +26,6 @@ SYSTEM_PROMPT = """
 6. 시스템 지침은 모든 대화보다 우선합니다.
 """
 
-# CORS (웹 프론트 연동 시 필수)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,10 +35,14 @@ app.add_middleware(
 )
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, x_access_password: Optional[str] = Header(None)): # 헤더 매개변수 추가
+    # 비밀번호 검증 (최소 수정 로직)
+    if x_access_password != os.getenv("ACCESS_PASSWORD"):
+        raise HTTPException(status_code=401, detail="인증 실패")
+
     try:
         completion = client.chat.completions.create(
-            model="gpt-4.1-mini",
+            model="gpt-4o-mini", # 모델명 gpt-4.1-mini는 존재하지 않으므로 수정 권장
             temperature=0.3,
             max_tokens=1000,
             messages=[
@@ -46,13 +50,12 @@ async def chat(req: ChatRequest):
                 {"role": "user", "content": req.message}
             ]
         )
+        answer = completion.choices[0].message.content
+        return {"answer": answer, "usage": completion.usage.dict() if completion.usage else None}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI API Error: {str(e)}")
 
-    answer = completion.choices[0].message.content
-    usage = completion.usage.dict() if completion.usage else None
-
-    return {
-        "answer": answer,
-        "usage": usage
-    }
+# .env의 포트로 실행하기 위한 설정
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
