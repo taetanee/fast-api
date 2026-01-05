@@ -35,14 +35,19 @@ app.add_middleware(
 )
 
 @app.post("/chat")
-async def chat(req: ChatRequest, x_access_password: Optional[str] = Header(None)): # 헤더 매개변수 추가
-    # 비밀번호 검증 (최소 수정 로직)
-    if x_access_password != os.getenv("ACCESS_PASSWORD"):
+async def chat(req: ChatRequest, x_access_password: Optional[str] = Header(None)):
+    
+    # [시작] 비밀번호 검증 (하이픈 제거 후 비교)
+    target_pw = os.getenv("ACCESS_PASSWORD", "").replace("-", "") # 환경변수에서도 하이픈 제거
+    input_pw = (x_access_password or "").replace("-", "")        # 입력값에서도 하이픈 제거
+    
+    if input_pw != target_pw:
         raise HTTPException(status_code=401, detail="인증 실패")
+    # [종료] 비밀번호 검증
 
     try:
         completion = client.chat.completions.create(
-            model="gpt-4o-mini", # 모델명 gpt-4.1-mini는 존재하지 않으므로 수정 권장
+            model="gpt-4o-mini",
             temperature=0.3,
             max_tokens=1000,
             messages=[
